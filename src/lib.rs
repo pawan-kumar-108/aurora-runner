@@ -2,9 +2,9 @@ use turbo::*;
 
 // Constants
 const GRAVITY: f32 = 0.8;
-const JUMP_POWER: f32 = -12.0;
-const MIN_JUMP_POWER: f32 = -6.0;
-const MAX_JUMP_HOLD: u32 = 15;
+const JUMP_POWER: f32 = -9.5;
+const MIN_JUMP_POWER: f32 = -5.0;
+const MAX_JUMP_HOLD: u32 = 12;
 const PLAYER_X: f32 = 40.0;
 const GROUND_Y: f32 = 100.0;
 const SCROLL_SPEED_BASE: f32 = 3.0;
@@ -346,8 +346,8 @@ impl GameState {
     }
     
     fn update_playing(&mut self, gp: &gamepad::Gamepad) {
-        // Dynamic scroll speed
-        self.scroll_speed = SCROLL_SPEED_BASE + (self.score as f32 / 500.0).min(3.0);
+        // Dynamic scroll speed (slower progression)
+        self.scroll_speed = SCROLL_SPEED_BASE + (self.score as f32 / 1000.0).min(2.5);
         
         // Apply slow-mo effect
         let actual_speed = if self.slow_mo_timer > 0 {
@@ -469,8 +469,8 @@ impl GameState {
                 });
             }
             
-            // Spawn power-ups (rare)
-            if random::u32() % 15 == 0 {
+            // Spawn power-ups (more frequent - gifts/presents)
+            if random::u32() % 8 == 0 {
                 let powerup_type = match random::u32() % 4 {
                     0 => PowerUpType::Shield,
                     1 => PowerUpType::SlowMo,
@@ -705,7 +705,20 @@ impl GameState {
             let oh = obstacle.height;
             
             if px < ox + ow && px + pw > ox && py < oy + oh && py + ph > oy {
+                // DEBUG LOG: Print collision details
+                let obstacle_name = match obstacle.obstacle_type {
+                    ObstacleType::Crystal => "Crystal",
+                    ObstacleType::FloatingRock => "FloatingRock",
+                    ObstacleType::CandyCane => "CandyCane",
+                };
+                log!("🔴 COLLISION DETECTED!");
+                log!("  Obstacle Type: {}", obstacle_name);
+                log!("  Obstacle Pos: x={:.1}, y={:.1}, w={:.1}, h={:.1}", ox, oy, ow, oh);
+                log!("  Player Pos: x={:.1}, y={:.1}, w={:.1}, h={:.1}", px, py, pw, ph);
+                log!("  Player Y from ground: {:.1}", self.player_y);
+                
                 if self.has_shield {
+                    log!("  Shield absorbed hit!");
                     self.has_shield = false;
                     self.shield_timer = 0;
                     audio::play("shield-break");
@@ -713,6 +726,7 @@ impl GameState {
                     self.screen_flash = 15;
                     return;
                 } else {
+                    log!("  GAME OVER!");
                     self.game_over();
                     return;
                 }
