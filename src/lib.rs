@@ -471,10 +471,10 @@ impl GameState {
             
             // Spawn power-ups (more frequent - gifts/presents)
             if random::u32() % 8 == 0 {
-                let powerup_type = match random::u32() % 4 {
+                let powerup_type = match random::u32() % 5 {
                     0 => PowerUpType::Shield,
                     1 => PowerUpType::SlowMo,
-                    2 => PowerUpType::Magnet,
+                    2 | 3 => PowerUpType::Magnet,  // 40% chance for magnet (2/5)
                     _ => PowerUpType::DoublePoints,
                 };
                 self.powerups.push(PowerUp {
@@ -547,14 +547,14 @@ impl GameState {
         for star in &mut self.stars {
             star.x -= actual_speed;
             
-            // Magnet pulls stars toward player
+            // Magnet pulls stars toward player (increased range and strength)
             if self.magnet_timer > 0 && !star.collected {
                 let dx = self.player_x - star.x;
                 let dy = self.player_y - star.y;
                 let dist = (dx * dx + dy * dy).sqrt();
-                if dist < 80.0 {
-                    star.x += dx * 0.1;
-                    star.y += dy * 0.1;
+                if dist < 120.0 {  // Increased from 80 to 120
+                    star.x += dx * 0.15;  // Increased pull strength from 0.1 to 0.15
+                    star.y += dy * 0.15;
                 }
             }
         }
@@ -787,7 +787,7 @@ impl GameState {
                             ("SLOW-MO!", COLOR_AURORA_GREEN)
                         }
                         PowerUpType::Magnet => {
-                            self.magnet_timer = 240;
+                            self.magnet_timer = 420;  // Increased from 240 to 420 frames (7 seconds)
                             ("MAGNET!", COLOR_AURORA_GREEN)
                         }
                         PowerUpType::DoublePoints => {
