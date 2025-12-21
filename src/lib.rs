@@ -935,11 +935,53 @@ impl GameState {
         
         // Only draw snow layer and trees after game starts (hide on title screen only)
         if self.mode != GameMode::Title {
-            // Draw snow layer below the track
-            for y in 110..144 {
-                let t = (y - 110) as f32 / 34.0;
-                let snow_color = lerp_color(COLOR_SNOW_BLUE, COLOR_SNOW_WHITE, t * 0.3);
-                rect!(y = y, w = 256, h = 1, color = snow_color);
+            // Draw organic snow surface with natural terrain
+            for x in 0..256 {
+                // Create organic snow mounds using sine waves with noise
+                let wave1 = ((x as f32 * 0.05 + self.frame as f32 * 0.01).sin() * 3.0) as i32;
+                let wave2 = ((x as f32 * 0.08 - self.frame as f32 * 0.015).sin() * 2.0) as i32;
+                let wave3 = ((x as f32 * 0.12 + self.frame as f32 * 0.008).cos() * 1.5) as i32;
+                
+                // Combine waves for organic terrain
+                let snow_height = 110 + wave1 + wave2 + wave3;
+                
+                // Draw snow from terrain height down
+                for y in snow_height..144 {
+                    let depth = (y - snow_height) as f32;
+                    let t = depth / 34.0;
+                    
+                    // Create depth gradient
+                    let base_color = if depth < 5.0 {
+                        // Surface - bright snow
+                        lerp_color(COLOR_SNOW_WHITE, COLOR_SNOW_BLUE, t * 0.3)
+                    } else if depth < 15.0 {
+                        // Mid layer
+                        lerp_color(COLOR_SNOW_BLUE, 0xbbd5eeff, (depth - 5.0) / 10.0 * 0.6)
+                    } else {
+                        // Deep layer with shadows
+                        lerp_color(0xaaccddff, 0x99bbddff, (depth - 15.0) / 19.0)
+                    };
+                    
+                    // Add noise/sparkle for texture
+                    let noise = ((x * 13 + y * 7 + (self.frame as i32 / 8)) % 11) as f32;
+                    let textured_color = if noise < 2.0 {
+                        // Brighter pixels for sparkle
+                        let r = ((base_color >> 24) & 0xff).min(245);
+                        let g = ((base_color >> 16) & 0xff).min(245);
+                        let b = ((base_color >> 8) & 0xff).min(245);
+                        ((r + 10).min(255) << 24) | ((g + 10).min(255) << 16) | ((b + 10).min(255) << 8) | 0xff
+                    } else if noise > 9.0 {
+                        // Darker pixels for shadow spots
+                        let r = ((base_color >> 24) & 0xff).saturating_sub(5);
+                        let g = ((base_color >> 16) & 0xff).saturating_sub(5);
+                        let b = ((base_color >> 8) & 0xff).saturating_sub(5);
+                        (r << 24) | (g << 16) | (b << 8) | 0xff
+                    } else {
+                        base_color
+                    };
+                    
+                    rect!(x = x as i32, y = y, w = 1, h = 1, color = textured_color);
+                }
             }
             
             // Draw Christmas trees on snowy ground with parallax scrolling
@@ -1099,8 +1141,6 @@ impl GameState {
     }
     
     fn render_playing(&self) {
-        rect!(y = GROUND_Y as i32 + 8, w = 256, h = 2, color = COLOR_AURORA_GREEN & 0xffffff88);
-        
         // Draw stars with sprite
         for star in &self.stars {
             if !star.collected {
@@ -1209,9 +1249,9 @@ impl GameState {
         
         text!("GAME OVER", x = 75, y = 38, font = "large", color = COLOR_TEXT);
         text!("SCORE: {}", self.score; x = 85, y = 58, font = "medium", color = COLOR_STAR);
-        text!("HIGH: {}", self.high_score; x = 75, y = 72, font = "small", color = COLOR_TEXT);
-        text!("MAX COMBO: {}x", self.max_combo; x = 60, y = 82, font = "small", color = COLOR_AURORA_GREEN);
-        text!("STARS: {}", self.stars_collected; x = 75, y = 92, font = "small", color = COLOR_STAR);
+        text!("HIGH: {}", self.high_score; x = 85, y = 72, font = "small", color = COLOR_TEXT);
+        text!("MAX COMBO: {}x", self.max_combo; x = 77, y = 82, font = "small", color = COLOR_AURORA_GREEN);
+        text!("STARS: {}", self.stars_collected; x = 89, y = 92, font = "small", color = COLOR_STAR);
         
         if (self.frame / 30) % 2 == 0 {
             text!("[UP] Play Again", x = 75, y = 105, font = "small", color = COLOR_TEXT);
