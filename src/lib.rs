@@ -2,9 +2,9 @@ use turbo::*;
 
 // Constants
 const GRAVITY: f32 = 0.8;
-const JUMP_POWER: f32 = -12.0;
-const MIN_JUMP_POWER: f32 = -6.0;
-const MAX_JUMP_HOLD: u32 = 15;
+const JUMP_POWER: f32 = -9.5;
+const MIN_JUMP_POWER: f32 = -5.0;
+const MAX_JUMP_HOLD: u32 = 12;
 const PLAYER_X: f32 = 40.0;
 const GROUND_Y: f32 = 100.0;
 const SCROLL_SPEED_BASE: f32 = 3.0;
@@ -30,6 +30,10 @@ const COLOR_PERFECT: u32 = 0xffff00ff;
 const COLOR_SHIELD: u32 = 0x00ffffff;
 const COLOR_TREE_TRUNK: u32 = 0x663300ff;
 const COLOR_TREE_GREEN: u32 = 0x00aa00ff;
+const COLOR_SNOW_WHITE: u32 = 0xffffffff;
+const COLOR_SNOW_BLUE: u32 = 0xddeeffff;
+const COLOR_MOUNTAIN_DARK: u32 = 0x223344ff;
+const COLOR_MOUNTAIN_SNOW: u32 = 0xeeeeffff;
 
 // Game mode enum
 #[turbo::serialize]
@@ -206,6 +210,9 @@ struct GameState {
     stars_collected: u32,
     total_distance: f32,
     
+    // Background scrolling
+    tree_scroll_offset: f32,
+    
     // RNG
     rng_state: u32,
 }
@@ -294,6 +301,9 @@ impl GameState {
             stars_collected: 0,
             total_distance: 0.0,
             
+            // Background scrolling
+            tree_scroll_offset: 0.0,
+            
             // RNG
             rng_state: rng,
         }
@@ -346,8 +356,8 @@ impl GameState {
     }
     
     fn update_playing(&mut self, gp: &gamepad::Gamepad) {
-        // Dynamic scroll speed
-        self.scroll_speed = SCROLL_SPEED_BASE + (self.score as f32 / 500.0).min(3.0);
+        // Dynamic scroll speed (slower progression)
+        self.scroll_speed = SCROLL_SPEED_BASE + (self.score as f32 / 1000.0).min(2.5);
         
         // Apply slow-mo effect
         let actual_speed = if self.slow_mo_timer > 0 {
@@ -359,6 +369,9 @@ impl GameState {
         
         self.distance += actual_speed;
         self.total_distance += actual_speed;
+        
+        // Update tree scrolling with parallax effect (slower than gameplay)
+        self.tree_scroll_offset += actual_speed * 0.5;
         
         // Score based on survival
         if self.frame % 10 == 0 {
@@ -469,12 +482,12 @@ impl GameState {
                 });
             }
             
-            // Spawn power-ups (rare)
-            if random::u32() % 15 == 0 {
-                let powerup_type = match random::u32() % 4 {
+            // Spawn power-ups (more frequent - gifts/presents)
+            if random::u32() % 8 == 0 {
+                let powerup_type = match random::u32() % 5 {
                     0 => PowerUpType::Shield,
                     1 => PowerUpType::SlowMo,
-                    2 => PowerUpType::Magnet,
+                    2 | 3 => PowerUpType::Magnet,  // 40% chance for magnet (2/5)
                     _ => PowerUpType::DoublePoints,
                 };
                 self.powerups.push(PowerUp {
@@ -547,14 +560,14 @@ impl GameState {
         for star in &mut self.stars {
             star.x -= actual_speed;
             
-            // Magnet pulls stars toward player
+            // Magnet pulls stars toward player (increased range and strength)
             if self.magnet_timer > 0 && !star.collected {
                 let dx = self.player_x - star.x;
                 let dy = self.player_y - star.y;
                 let dist = (dx * dx + dy * dy).sqrt();
-                if dist < 80.0 {
-                    star.x += dx * 0.1;
-                    star.y += dy * 0.1;
+                if dist < 120.0 {  // Increased from 80 to 120
+                    star.x += dx * 0.15;  // Increased pull strength from 0.1 to 0.15
+                    star.y += dy * 0.15;
                 }
             }
         }
@@ -630,8 +643,8 @@ impl GameState {
         }
         self.particles.retain(|p| p.life < p.max_life && p.y < 150.0);
         
-        // Restart
-        if gp.start.just_pressed() || gp.up.just_pressed() {
+        // Restart with Space/A button
+        if gp.start.just_pressed() || gp.a.just_pressed() {
             self.reset_game();
         }
     }
@@ -705,7 +718,20 @@ impl GameState {
             let oh = obstacle.height;
             
             if px < ox + ow && px + pw > ox && py < oy + oh && py + ph > oy {
+                // DEBUG LOG: Print collision details
+                let obstacle_name = match obstacle.obstacle_type {
+                    ObstacleType::Crystal => "Crystal",
+                    ObstacleType::FloatingRock => "FloatingRock",
+                    ObstacleType::CandyCane => "CandyCane",
+                };
+                log!("🔴 COLLISION DETECTED!");
+                log!("  Obstacle Type: {}", obstacle_name);
+                log!("  Obstacle Pos: x={:.1}, y={:.1}, w={:.1}, h={:.1}", ox, oy, ow, oh);
+                log!("  Player Pos: x={:.1}, y={:.1}, w={:.1}, h={:.1}", px, py, pw, ph);
+                log!("  Player Y from ground: {:.1}", self.player_y);
+                
                 if self.has_shield {
+                    log!("  Shield absorbed hit!");
                     self.has_shield = false;
                     self.shield_timer = 0;
                     audio::play("shield-break");
@@ -713,6 +739,7 @@ impl GameState {
                     self.screen_flash = 15;
                     return;
                 } else {
+                    log!("  GAME OVER!");
                     self.game_over();
                     return;
                 }
@@ -773,7 +800,7 @@ impl GameState {
                             ("SLOW-MO!", COLOR_AURORA_GREEN)
                         }
                         PowerUpType::Magnet => {
-                            self.magnet_timer = 240;
+                            self.magnet_timer = 420;  // Increased from 240 to 420 frames (7 seconds)
                             ("MAGNET!", COLOR_AURORA_GREEN)
                         }
                         PowerUpType::DoublePoints => {
@@ -857,6 +884,8 @@ impl GameState {
         self.perfect_landings = 0;
         self.near_miss_count = 0;
         self.screen_flash = 0;
+        self.tree_scroll_offset = 0.0;
+        self.stars_collected = 0;
     }
     
     fn render(&mut self) {
@@ -905,55 +934,143 @@ impl GameState {
             }
         }
         
-        // Draw Christmas trees in background (moved below the track)
-        let tree_positions = [20, 60, 120, 180, 220];
-        for (i, tree_x) in tree_positions.iter().enumerate() {
-            let tree_y = 122 - (i % 3) as i32 * 3;  // Moved down from 110 to 122, reduced variance
-            let tree_offset = ((self.frame as f32 * 0.02) + (i as f32 * 2.0)).sin() * 2.0;
-            
-            // Tree trunk
-            rect!(x = tree_x + 4, y = tree_y, w = 4, h = 8, color = COLOR_TREE_TRUNK);
-            
-            // Tree layers (3 triangles)
-            // Top layer
-            for x_offset in -6i32..=6i32 {
-                let y_offset = x_offset.abs() / 2;
-                rect!(
-                    x = tree_x + 6 + x_offset,
-                    y = (tree_y - 15 + y_offset) as i32 + tree_offset as i32,
-                    w = 1,
-                    h = 1,
-                    color = 0x006600ff
-                );
+        // Only draw snow layer and trees after game starts (hide on title screen only)
+        if self.mode != GameMode::Title {
+            // Draw organic snow surface with natural terrain
+            for x in 0..256 {
+                // Create organic snow mounds using sine waves with noise
+                let wave1 = ((x as f32 * 0.05 + self.frame as f32 * 0.01).sin() * 3.0) as i32;
+                let wave2 = ((x as f32 * 0.08 - self.frame as f32 * 0.015).sin() * 2.0) as i32;
+                let wave3 = ((x as f32 * 0.12 + self.frame as f32 * 0.008).cos() * 1.5) as i32;
+                
+                // Combine waves for organic terrain
+                let snow_height = 110 + wave1 + wave2 + wave3;
+                
+                // Draw snow from terrain height down
+                for y in snow_height..144 {
+                    let depth = (y - snow_height) as f32;
+                    let t = depth / 34.0;
+                    
+                    // Create depth gradient
+                    let base_color = if depth < 5.0 {
+                        // Surface - bright snow
+                        lerp_color(COLOR_SNOW_WHITE, COLOR_SNOW_BLUE, t * 0.3)
+                    } else if depth < 15.0 {
+                        // Mid layer
+                        lerp_color(COLOR_SNOW_BLUE, 0xbbd5eeff, (depth - 5.0) / 10.0 * 0.6)
+                    } else {
+                        // Deep layer with shadows
+                        lerp_color(0xaaccddff, 0x99bbddff, (depth - 15.0) / 19.0)
+                    };
+                    
+                    // Add noise/sparkle for texture
+                    let noise = ((x * 13 + y * 7 + (self.frame as i32 / 8)) % 11) as f32;
+                    let textured_color = if noise < 2.0 {
+                        // Brighter pixels for sparkle
+                        let r = ((base_color >> 24) & 0xff).min(245);
+                        let g = ((base_color >> 16) & 0xff).min(245);
+                        let b = ((base_color >> 8) & 0xff).min(245);
+                        ((r + 10).min(255) << 24) | ((g + 10).min(255) << 16) | ((b + 10).min(255) << 8) | 0xff
+                    } else if noise > 9.0 {
+                        // Darker pixels for shadow spots
+                        let r = ((base_color >> 24) & 0xff).saturating_sub(5);
+                        let g = ((base_color >> 16) & 0xff).saturating_sub(5);
+                        let b = ((base_color >> 8) & 0xff).saturating_sub(5);
+                        (r << 24) | (g << 16) | (b << 8) | 0xff
+                    } else {
+                        base_color
+                    };
+                    
+                    rect!(x = x as i32, y = y, w = 1, h = 1, color = textured_color);
+                }
             }
             
-            // Middle layer
-            for x_offset in -8i32..=8i32 {
-                let y_offset = x_offset.abs() / 2;
-                rect!(
-                    x = tree_x + 6 + x_offset,
-                    y = (tree_y - 8 + y_offset) as i32 + tree_offset as i32,
-                    w = 1,
-                    h = 1,
-                    color = 0x008800ff
-                );
-            }
-            
-            // Bottom layer
-            for x_offset in -10i32..=10i32 {
-                let y_offset = x_offset.abs() / 2;
-                rect!(
-                    x = tree_x + 6 + x_offset,
-                    y = (tree_y - 1 + y_offset) as i32 + tree_offset as i32,
-                    w = 1,
-                    h = 1,
-                    color = COLOR_TREE_GREEN
-                );
-            }
-            
-            // Star on top (blinking)
-            if (self.frame / 15 + i as u32) % 2 == 0 {
-                circ!(x = tree_x + 6, y = (tree_y - 18) as i32 + tree_offset as i32, d = 3, color = COLOR_STAR);
+            // Draw Christmas trees on snowy ground with parallax scrolling
+            let tree_base_positions = [0.0, 50.0, 100.0, 150.0, 200.0, 250.0, 300.0];
+            for (i, base_x) in tree_base_positions.iter().enumerate() {
+                // Calculate scrolling position with wrapping
+                let tree_x = ((base_x - self.tree_scroll_offset) % 350.0 + 350.0) % 350.0;
+                
+                // Only draw if tree is on screen (with buffer)
+                if tree_x >= -30.0 && tree_x <= 280.0 {
+                    let tree_y = 130 - (i % 3) as i32 * 2;  // Positioned on snow layer
+                    let tree_offset = ((self.frame as f32 * 0.02) + (i as f32 * 2.0)).sin() * 2.0;
+                    let tree_x = tree_x as i32;
+                
+                    // Snowdrift at tree base (ground snow puffs)
+                    for drift_x in -12i32..=12i32 {
+                        let drift_height = 3 - (drift_x.abs() / 4);
+                        if drift_height > 0 {
+                            rect!(
+                                x = tree_x + 6 + drift_x,
+                                y = tree_y + 8,
+                                w = 1,
+                                h = drift_height,
+                                color = COLOR_SNOW_WHITE
+                            );
+                        }
+                    }
+                    
+                    // Tree trunk
+                    rect!(x = tree_x + 4, y = tree_y, w = 4, h = 8, color = COLOR_TREE_TRUNK);
+                    
+                    // Tree layers (3 triangles)
+                    // Top layer with snow cap
+                    for x_offset in -6i32..=6i32 {
+                        let y_offset = x_offset.abs() / 2;
+                        let tree_color = if y_offset == 0 {
+                            COLOR_SNOW_WHITE  // Snow on top
+                        } else {
+                            0x006600ff
+                        };
+                        rect!(
+                            x = tree_x + 6 + x_offset,
+                            y = (tree_y - 15 + y_offset) as i32 + tree_offset as i32,
+                            w = 1,
+                            h = 1,
+                            color = tree_color
+                        );
+                    }
+                    
+                    // Middle layer with snow accents
+                    for x_offset in -8i32..=8i32 {
+                        let y_offset = x_offset.abs() / 2;
+                        let tree_color = if y_offset == 0 || (x_offset.abs() <= 2 && y_offset == 1) {
+                            COLOR_SNOW_WHITE  // Snow accents
+                        } else {
+                            0x008800ff
+                        };
+                        rect!(
+                            x = tree_x + 6 + x_offset,
+                            y = (tree_y - 8 + y_offset) as i32 + tree_offset as i32,
+                            w = 1,
+                            h = 1,
+                            color = tree_color
+                        );
+                    }
+                    
+                    // Bottom layer with snow accents
+                    for x_offset in -10i32..=10i32 {
+                        let y_offset = x_offset.abs() / 2;
+                        let tree_color = if y_offset == 0 || (x_offset.abs() <= 3 && y_offset == 1) {
+                            COLOR_SNOW_WHITE  // Snow accents
+                        } else {
+                            COLOR_TREE_GREEN
+                        };
+                        rect!(
+                            x = tree_x + 6 + x_offset,
+                            y = (tree_y - 1 + y_offset) as i32 + tree_offset as i32,
+                            w = 1,
+                            h = 1,
+                            color = tree_color
+                        );
+                    }
+                    
+                    // Star on top (blinking)
+                    if (self.frame / 15 + i as u32) % 2 == 0 {
+                        circ!(x = tree_x + 6, y = (tree_y - 18) as i32 + tree_offset as i32, d = 3, color = COLOR_STAR);
+                    }
+                }
             }
         }
         
@@ -1004,11 +1121,12 @@ impl GameState {
         let pulse = self.title_pulse.sin() * 0.3 + 1.0;
         let title_y = 30 + (self.title_pulse.sin() * 3.0) as i32;
         
-        text!("AURORA", x = 80, y = title_y, font = "large", color = apply_opacity(COLOR_AURORA_RED, pulse));
-        text!("RUNNER", x = 80, y = title_y + 16, font = "large", color = apply_opacity(COLOR_AURORA_GREEN, pulse));
+        // Centered title text
+        text!("AURORA", x = 92, y = title_y, font = "large", color = apply_opacity(COLOR_AURORA_RED, pulse));
+        text!("RUNNER", x = 92, y = title_y + 16, font = "large", color = apply_opacity(COLOR_AURORA_GREEN, pulse));
         
-        // Draw cute reindeer on title screen
-        sprite!("reindeer", x = 110, y = 55);
+        // Draw cute reindeer centered below title
+        sprite!("reindeer", x = 105, y = title_y + 32);
         
         if (self.frame / 30) % 2 == 0 {
             text!("PRESS [UP] TO START", x = 60, y = 85, font = "medium", color = COLOR_TEXT);
@@ -1024,8 +1142,6 @@ impl GameState {
     }
     
     fn render_playing(&self) {
-        rect!(y = GROUND_Y as i32 + 8, w = 256, h = 2, color = COLOR_AURORA_GREEN & 0xffffff88);
-        
         // Draw stars with sprite
         for star in &self.stars {
             if !star.collected {
@@ -1068,7 +1184,7 @@ impl GameState {
         }
         
         // Draw reindeer player with Santa hat
-        sprite!("santa-hat", x = self.player_x as i32 - 6, y = self.player_y as i32 - 18);
+        sprite!("santa-hat", x = self.player_x as i32 - 4, y = self.player_y as i32 - 18);
         sprite!("reindeer", x = self.player_x as i32 - 8, y = self.player_y as i32 - 8);
         
         // Draw UI
@@ -1126,7 +1242,7 @@ impl GameState {
         }
         
         // Draw player
-        sprite!("santa-hat", x = self.player_x as i32 - 6, y = self.player_y as i32 - 18);
+        sprite!("santa-hat", x = self.player_x as i32 - 4, y = self.player_y as i32 - 18);
         sprite!("reindeer", x = self.player_x as i32 - 8, y = self.player_y as i32 - 8);
         
         rect!(w = 256, h = 144, color = 0x00000099);
@@ -1134,12 +1250,12 @@ impl GameState {
         
         text!("GAME OVER", x = 75, y = 38, font = "large", color = COLOR_TEXT);
         text!("SCORE: {}", self.score; x = 85, y = 58, font = "medium", color = COLOR_STAR);
-        text!("HIGH: {}", self.high_score; x = 75, y = 72, font = "small", color = COLOR_TEXT);
-        text!("MAX COMBO: {}x", self.max_combo; x = 60, y = 82, font = "small", color = COLOR_AURORA_GREEN);
-        text!("STARS: {}", self.stars_collected; x = 75, y = 92, font = "small", color = COLOR_STAR);
+        text!("HIGH: {}", self.high_score; x = 85, y = 72, font = "small", color = COLOR_TEXT);
+        text!("MAX COMBO: {}x", self.max_combo; x = 77, y = 82, font = "small", color = COLOR_AURORA_GREEN);
+        text!("STARS: {}", self.stars_collected; x = 89, y = 92, font = "small", color = COLOR_STAR);
         
         if (self.frame / 30) % 2 == 0 {
-            text!("[UP] Play Again", x = 75, y = 105, font = "small", color = COLOR_TEXT);
+            text!("[SPACE] Play Again", x = 70, y = 105, font = "small", color = COLOR_TEXT);
         }
     }
 }
