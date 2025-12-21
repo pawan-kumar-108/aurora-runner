@@ -13,6 +13,15 @@ A mesmerizing endless runner through the Northern Lights. Hold JUMP to soar high
 
 [![Aurora Runner Gameplay](https://img.youtube.com/vi/OHSAylB9phw/maxresdefault.jpg)](https://www.youtube.com/watch?v=OHSAylB9phw)
 
+## 🎨 **CONTROLS**
+
+| Input | Action |
+|-------|--------|
+| **Up** | Start Game |
+| **Up** | Jump (Hold for higher jump) |
+| **Space**| Restart the game (after game over) |
+
+---
 
 ## 🎮 **GAME FEATURES**
 
@@ -63,16 +72,6 @@ turbo run aurora-runner
 ```
 
 The game window will open automatically!
-
----
-
-## 🎨 **CONTROLS**
-
-| Input | Action |
-|-------|--------|
-| **Up** | Jump (Hold for higher jump) |
-| **Up** | Pause / Start Game |
-| **Space**| Restart the game (after game over) |
 
 ---
 
