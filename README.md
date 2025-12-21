@@ -25,6 +25,16 @@ A mesmerizing endless runner through the Northern Lights. Hold JUMP to soar high
 
 ## 🎮 **GAME FEATURES**
 
+### 🎁 Gift-Wrapped Power-Ups:
+
+Grab festive presents to unlock abilities:
+
+- 🛡️ __Shield Gift__ (blue): Tank one hit and keep running
+- 🧲 __Magnet Gift__ (green): Stars automatically fly toward you
+- ⏰ __Slow-Mo Gift__ (purple): Bullet time when chaos strikes
+- ⭐ __2x Points Gift__ (gold): Stack with combos for insane scores
+
+
 ### Core Gameplay
 - **Variable Jump Height**: Hold the jump button longer to jump higher - risk vs reward!
 - **Altitude Scoring**: The higher you fly, the more points you earn
