@@ -151,11 +151,10 @@ Ready to soar through the Northern Lights?
 cd aurora-runner
 turbo run -w aurora-runner
 ```
-For any help or collab, you can reach out to me: pawangugm@gmail.com
 
 **Hold jump to fly higher. Collect stars. Chase the high score. Become a legend!**
 
-
+For any help or collab, you can reach out to me: pawangugm@gmail.com
 ---
 
 Made with ❤️ and ✨ by Pawan for Christmas 2025
