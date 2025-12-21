@@ -7,7 +7,7 @@ A mesmerizing endless runner through the Northern Lights. Hold JUMP to soar high
 
 ---
 
-## Deployed Game: https://aurora-runner.netlify.app/
+## Let's play: https://aurora-runner.netlify.app/
 
 ## 🎥 Video Presentation: 
 
