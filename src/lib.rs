@@ -885,6 +885,7 @@ impl GameState {
         self.near_miss_count = 0;
         self.screen_flash = 0;
         self.tree_scroll_offset = 0.0;
+        self.stars_collected = 0;
     }
     
     fn render(&mut self) {
