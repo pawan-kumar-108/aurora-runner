@@ -643,8 +643,8 @@ impl GameState {
         }
         self.particles.retain(|p| p.life < p.max_life && p.y < 150.0);
         
-        // Restart
-        if gp.start.just_pressed() || gp.up.just_pressed() {
+        // Restart with Space/A button
+        if gp.start.just_pressed() || gp.a.just_pressed() {
             self.reset_game();
         }
     }
@@ -1255,7 +1255,7 @@ impl GameState {
         text!("STARS: {}", self.stars_collected; x = 89, y = 92, font = "small", color = COLOR_STAR);
         
         if (self.frame / 30) % 2 == 0 {
-            text!("[UP] Play Again", x = 75, y = 105, font = "small", color = COLOR_TEXT);
+            text!("[SPACE] Play Again", x = 70, y = 105, font = "small", color = COLOR_TEXT);
         }
     }
 }
