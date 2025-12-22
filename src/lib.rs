@@ -99,6 +99,7 @@ struct Star {
     x: f32,
     y: f32,
     collected: bool,
+    missed: bool,
 }
 
 // Power-up struct
@@ -108,6 +109,7 @@ struct PowerUp {
     y: f32,
     powerup_type: PowerUpType,
     collected: bool,
+    missed: bool,
 }
 
 // Particle struct
@@ -210,8 +212,10 @@ struct GameState {
     stars_collected: u32,
     total_distance: f32,
     
-    // Background scrolling
+    // Background scrolling (parallax layers)
     tree_scroll_offset: f32,
+    mountain_scroll_offset: f32,
+    aurora_scroll_offset: f32,
     
     // RNG
     rng_state: u32,
@@ -244,7 +248,7 @@ impl GameState {
                     offset: (rand_quick(&mut rng) % 100) as f32,
                     frequency: 0.05,
                     amplitude: 15.0,
-                    speed: 0.5,
+                    speed: 0.35,
                     color: COLOR_AURORA_RED,
                     y_base: 30.0,
                 },
@@ -252,7 +256,7 @@ impl GameState {
                     offset: (rand_quick(&mut rng) % 100) as f32,
                     frequency: 0.03,
                     amplitude: 20.0,
-                    speed: 0.3,
+                    speed: 0.1,  
                     color: COLOR_AURORA_GREEN,
                     y_base: 50.0,
                 },
@@ -260,7 +264,7 @@ impl GameState {
                     offset: (rand_quick(&mut rng) % 100) as f32,
                     frequency: 0.04,
                     amplitude: 10.0,
-                    speed: 0.4,
+                    speed: 0.2,  
                     color: COLOR_AURORA_GOLD,
                     y_base: 70.0,
                 },
@@ -301,8 +305,10 @@ impl GameState {
             stars_collected: 0,
             total_distance: 0.0,
             
-            // Background scrolling
+            // Background scrolling (parallax layers)
             tree_scroll_offset: 0.0,
+            mountain_scroll_offset: 0.0,
+            aurora_scroll_offset: 0.0,
             
             // RNG
             rng_state: rng,
@@ -370,8 +376,10 @@ impl GameState {
         self.distance += actual_speed;
         self.total_distance += actual_speed;
         
-        // Update tree scrolling with parallax effect (slower than gameplay)
-        self.tree_scroll_offset += actual_speed * 0.5;
+        // Update parallax layers (each layer moves at different speed for depth)
+        self.mountain_scroll_offset += actual_speed * 0.15;  // Slowest - distant mountains
+        self.aurora_scroll_offset += actual_speed * 0.25;     // Slow - aurora waves
+        self.tree_scroll_offset += actual_speed * 0.5;        // Medium - trees
         
         // Score based on survival
         if self.frame % 10 == 0 {
@@ -479,22 +487,24 @@ impl GameState {
                     x: 256.0 + 40.0,
                     y: 40.0 + (random::u32() % 40) as f32,
                     collected: false,
+                    missed: false,
                 });
             }
             
             // Spawn power-ups (more frequent - gifts/presents)
             if random::u32() % 8 == 0 {
-                let powerup_type = match random::u32() % 5 {
-                    0 => PowerUpType::Shield,
-                    1 => PowerUpType::SlowMo,
-                    2 | 3 => PowerUpType::Magnet,  // 40% chance for magnet (2/5)
-                    _ => PowerUpType::DoublePoints,
+                let powerup_type = match random::u32() % 6 {
+                    0 | 1 => PowerUpType::Shield,  // 33% chance for shield (2/6)
+                    2 => PowerUpType::SlowMo,      // 17% chance
+                    3 | 4 => PowerUpType::Magnet,  // 33% chance for magnet (2/6)
+                    _ => PowerUpType::DoublePoints, // 17% chance
                 };
                 self.powerups.push(PowerUp {
                     x: 256.0 + 60.0,
                     y: 50.0 + (random::u32() % 30) as f32,
                     powerup_type,
                     collected: false,
+                    missed: false,
                 });
             }
         }
@@ -556,7 +566,9 @@ impl GameState {
         
         self.obstacles.retain(|o| o.x + o.width >= 0.0);
         
-        // Update stars with magnet effect
+        // Update stars with magnet effect and check for missed items
+        let mut missed_star_positions = Vec::new();
+        
         for star in &mut self.stars {
             star.x -= actual_speed;
             
@@ -570,13 +582,51 @@ impl GameState {
                     star.y += dy * 0.15;
                 }
             }
+            
+            // Check if star is going off-screen without being collected
+            if star.x < -8.0 && !star.collected && !star.missed {
+                star.missed = true;
+                // Apply penalty: combo and score reduction
+                if self.combo > 0 {
+                    self.combo = self.combo.saturating_sub(3);
+                }
+                self.score = self.score.saturating_sub(25);
+                missed_star_positions.push((star.x, star.y));
+            }
         }
+        
+        // Spawn penalty text for missed stars
+        for (x, y) in missed_star_positions {
+            self.spawn_floating_text(x.max(10.0), y, "-3 COMBO", COLOR_AURORA_GOLD);
+            self.spawn_floating_text(x.max(10.0), y + 10.0, "-25 PTS", COLOR_AURORA_RED);
+        }
+        
         self.stars.retain(|s| s.x >= -8.0);
         
-        // Update power-ups
+        // Update power-ups and check for missed items
+        let mut missed_powerup_positions = Vec::new();
+        
         for powerup in &mut self.powerups {
             powerup.x -= actual_speed;
+            
+            // Check if powerup is going off-screen without being collected
+            if powerup.x < -16.0 && !powerup.collected && !powerup.missed {
+                powerup.missed = true;
+                // Apply penalty: combo and score reduction
+                if self.combo > 0 {
+                    self.combo = self.combo.saturating_sub(3);
+                }
+                self.score = self.score.saturating_sub(25);
+                missed_powerup_positions.push((powerup.x, powerup.y));
+            }
         }
+        
+        // Spawn penalty text for missed power-ups
+        for (x, y) in missed_powerup_positions {
+            self.spawn_floating_text(x.max(10.0), y, "-3 COMBO", COLOR_AURORA_GOLD);
+            self.spawn_floating_text(x.max(10.0), y + 10.0, "-25 PTS", COLOR_AURORA_RED);
+        }
+        
         self.powerups.retain(|p| p.x >= -16.0);
         
         // Spawn snowflakes
@@ -710,40 +760,43 @@ impl GameState {
         let pw = 16.0;
         let ph = 16.0;
         
+        // Track obstacles to destroy
+        let mut obstacles_to_destroy = Vec::new();
+        
         // Check obstacle collisions
-        for obstacle in &self.obstacles {
+        for (i, obstacle) in self.obstacles.iter().enumerate() {
             let ox = obstacle.x;
             let oy = obstacle.y - obstacle.height;
             let ow = obstacle.width;
             let oh = obstacle.height;
             
             if px < ox + ow && px + pw > ox && py < oy + oh && py + ph > oy {
-                // DEBUG LOG: Print collision details
-                let obstacle_name = match obstacle.obstacle_type {
-                    ObstacleType::Crystal => "Crystal",
-                    ObstacleType::FloatingRock => "FloatingRock",
-                    ObstacleType::CandyCane => "CandyCane",
-                };
-                log!("🔴 COLLISION DETECTED!");
-                log!("  Obstacle Type: {}", obstacle_name);
-                log!("  Obstacle Pos: x={:.1}, y={:.1}, w={:.1}, h={:.1}", ox, oy, ow, oh);
-                log!("  Player Pos: x={:.1}, y={:.1}, w={:.1}, h={:.1}", px, py, pw, ph);
-                log!("  Player Y from ground: {:.1}", self.player_y);
-                
                 if self.has_shield {
-                    log!("  Shield absorbed hit!");
-                    self.has_shield = false;
-                    self.shield_timer = 0;
-                    audio::play("shield-break");
-                    self.spawn_floating_text(self.player_x, self.player_y, "SHIELD!", COLOR_SHIELD);
-                    self.screen_flash = 15;
-                    return;
+                    // Shield DESTROYS the obstacle!
+                    log!("🛡️ Shield crushed obstacle!");
+                    obstacles_to_destroy.push((i, ox + ow / 2.0, oy + oh / 2.0));
                 } else {
                     log!("  GAME OVER!");
                     self.game_over();
                     return;
                 }
             }
+        }
+        
+        // Destroy obstacles and spawn effects
+        for (index, x, y) in obstacles_to_destroy.iter().rev() {
+            self.obstacles.remove(*index);
+            
+            // Spawn explosion particles
+            for _ in 0..15 {
+                self.spawn_sparkle(*x, *y);
+            }
+            
+            // Show crushed text
+            self.spawn_floating_text(*x, *y, "CRUSHED!", COLOR_SHIELD);
+            
+            // Play shield break sound for feedback
+            audio::play("shield-break");
         }
         
         // Check star collection
@@ -792,11 +845,11 @@ impl GameState {
                     let (text, color) = match powerup.powerup_type {
                         PowerUpType::Shield => {
                             self.has_shield = true;
-                            self.shield_timer = 300;
+                            self.shield_timer = 600;  // 10 seconds at 60fps
                             ("SHIELD!", COLOR_SHIELD)
                         }
                         PowerUpType::SlowMo => {
-                            self.slow_mo_timer = 180;
+                            self.slow_mo_timer = 600;  // 10 seconds at 60fps
                             ("SLOW-MO!", COLOR_AURORA_GREEN)
                         }
                         PowerUpType::Magnet => {
@@ -885,6 +938,8 @@ impl GameState {
         self.near_miss_count = 0;
         self.screen_flash = 0;
         self.tree_scroll_offset = 0.0;
+        self.mountain_scroll_offset = 0.0;
+        self.aurora_scroll_offset = 0.0;
         self.stars_collected = 0;
     }
     
@@ -911,26 +966,58 @@ impl GameState {
             rect!(y = y, w = 256, h = 1, color = color);
         }
         
-        // Draw Christmas aurora waves (red, green, gold)
-        for (i, wave) in self.aurora_waves.iter().enumerate() {
-            let xmas_color = match i {
-                0 => COLOR_AURORA_RED,
-                1 => COLOR_AURORA_GREEN,
-                _ => COLOR_AURORA_GOLD,
-            };
-            
-            for x in (0..256).step_by(2) {
-                let y1 = wave.y_base + ((x as f32 * wave.frequency + wave.offset).sin() * wave.amplitude);
-                let y2 = wave.y_base + (((x + 2) as f32 * wave.frequency + wave.offset).sin() * wave.amplitude);
-                let height = ((y2 - y1).abs() + wave.amplitude / 2.0) as u32;
+        // Draw Christmas aurora waves with parallax scrolling (red, green, gold)
+        if self.mode != GameMode::Title {
+            // During gameplay, add parallax scrolling to aurora waves
+            for (i, wave) in self.aurora_waves.iter().enumerate() {
+                let xmas_color = match i {
+                    0 => COLOR_AURORA_RED,
+                    1 => COLOR_AURORA_GREEN,
+                    _ => COLOR_AURORA_GOLD,
+                };
                 
-                rect!(
-                    x = x as i32,
-                    y = y1 as i32 - height as i32 / 2,
-                    w = 2,
-                    h = height.max(1),
-                    color = xmas_color & 0xffffff33
-                );
+                // Each aurora layer has slightly different parallax speed for depth
+                // Top layer (i=0) moves slowest, bottom layer (i=2) moves faster
+                let layer_parallax = self.aurora_scroll_offset * (i as f32 * 0.3);
+                
+                for x in (0..256).step_by(2) {
+                    // Add horizontal parallax shift to the sine wave calculation
+                    let parallax_x = x as f32 + layer_parallax;
+                    let y1 = wave.y_base + ((parallax_x * wave.frequency + wave.offset).sin() * wave.amplitude);
+                    let y2 = wave.y_base + (((parallax_x + 2.0) * wave.frequency + wave.offset).sin() * wave.amplitude);
+                    let height = ((y2 - y1).abs() + wave.amplitude / 2.0) as u32;
+                    
+                    rect!(
+                        x = x as i32,
+                        y = y1 as i32 - height as i32 / 2,
+                        w = 2,
+                        h = height.max(1),
+                        color = xmas_color & 0xffffff33
+                    );
+                }
+            }
+        } else {
+            // Title screen - static aurora (no parallax)
+            for (i, wave) in self.aurora_waves.iter().enumerate() {
+                let xmas_color = match i {
+                    0 => COLOR_AURORA_RED,
+                    1 => COLOR_AURORA_GREEN,
+                    _ => COLOR_AURORA_GOLD,
+                };
+                
+                for x in (0..256).step_by(2) {
+                    let y1 = wave.y_base + ((x as f32 * wave.frequency + wave.offset).sin() * wave.amplitude);
+                    let y2 = wave.y_base + (((x + 2) as f32 * wave.frequency + wave.offset).sin() * wave.amplitude);
+                    let height = ((y2 - y1).abs() + wave.amplitude / 2.0) as u32;
+                    
+                    rect!(
+                        x = x as i32,
+                        y = y1 as i32 - height as i32 / 2,
+                        w = 2,
+                        h = height.max(1),
+                        color = xmas_color & 0xffffff33
+                    );
+                }
             }
         }
         
@@ -1177,18 +1264,71 @@ impl GameState {
             }
         }
         
-        // Draw player with shield effect
+        // Draw player with animated rotating shield rings
         if self.has_shield {
-            let shield_pulse = (self.frame as f32 * 0.2).sin() * 0.3 + 0.7;
-            sprite!("shield", x = self.player_x as i32 - 16, y = self.player_y as i32 - 16, opacity = shield_pulse);
+            let time = self.frame as f32 * 0.1;
+            let pulse = (time * 0.5).sin() * 2.0;  // Pulsing effect
+            
+            // Calculate fade effect for last 3 seconds (180 frames)
+            let fade_multiplier = if self.shield_timer < 180 {
+                // Fade out in last 3 seconds
+                self.shield_timer as f32 / 180.0
+            } else {
+                1.0
+            };
+            
+            // Draw 3 rotating shield rings
+            let ring_configs = [
+                (12.0 + pulse, time * 2.0, 8),        // Inner ring - clockwise, fast
+                (16.0 + pulse, -time * 1.5, 10),      // Middle ring - counter-clockwise, medium
+                (20.0 + pulse, time * 1.0, 12),       // Outer ring - clockwise, slow
+            ];
+            
+            for (radius, rotation, segments) in ring_configs {
+                for i in 0..segments {
+                    let angle = (i as f32 / segments as f32) * std::f32::consts::PI * 2.0 + rotation;
+                    let x = self.player_x + angle.cos() * radius;
+                    let y = self.player_y + angle.sin() * radius;
+                    
+                    // Draw ring segment with trail effect and fade
+                    let base_opacity = 0.6 + (time + i as f32 * 0.5).sin() * 0.4;
+                    let segment_opacity = base_opacity * fade_multiplier;
+                    circ!(
+                        x = x as i32,
+                        y = y as i32,
+                        d = 3,
+                        color = apply_opacity(COLOR_SHIELD, segment_opacity)
+                    );
+                }
+            }
+            
+            // Add connecting lines for force field effect
+            let line_rotation = time * 1.5;
+            for i in 0..4 {
+                let angle = (i as f32 / 4.0) * std::f32::consts::PI * 2.0 + line_rotation;
+                let x1 = self.player_x + angle.cos() * 10.0;
+                let y1 = self.player_y + angle.sin() * 10.0;
+                let x2 = self.player_x + angle.cos() * 22.0;
+                let y2 = self.player_y + angle.sin() * 22.0;
+                
+                // Simple line using circles with fade
+                let dist = ((x2 - x1).powi(2) + (y2 - y1).powi(2)).sqrt();
+                let steps = dist as i32;
+                for step in 0..steps {
+                    let t = step as f32 / dist;
+                    let x = x1 + (x2 - x1) * t;
+                    let y = y1 + (y2 - y1) * t;
+                    circ!(x = x as i32, y = y as i32, d = 1, color = apply_opacity(COLOR_SHIELD, 0.3 * fade_multiplier));
+                }
+            }
         }
         
         // Draw reindeer player with Santa hat
         sprite!("santa-hat", x = self.player_x as i32 - 4, y = self.player_y as i32 - 18);
         sprite!("reindeer", x = self.player_x as i32 - 8, y = self.player_y as i32 - 8);
         
-        // Draw UI
-        rect!(x = 4, y = 4, w = 120, h = 34, color = COLOR_UI_BG);
+        // Draw UI (expanded to fit shield timer)
+        rect!(x = 4, y = 4, w = 120, h = 44, color = COLOR_UI_BG);
         text!("SCORE: {}", self.score; x = 8, y = 8, font = "small", color = COLOR_TEXT);
         
         if self.combo > 0 {
@@ -1205,14 +1345,57 @@ impl GameState {
         }
         
         // Power-up indicators
+        // Shield timer - prominent in last 3 seconds
+        if self.shield_timer > 0 {
+            let seconds_left = self.shield_timer / 60;
+            let frames_left = self.shield_timer % 60;
+            
+            if self.shield_timer < 180 {
+                // Last 3 seconds - show countdown with ticking animation
+                let is_half_second = (frames_left / 30) % 2 == 0;
+                if is_half_second || self.shield_timer < 60 {
+                    // Blink faster in last second
+                    let warning_color = if self.shield_timer < 60 {
+                        COLOR_AURORA_RED  // Red in last second
+                    } else {
+                        0xffaa00ff  // Orange in 2-3 seconds
+                    };
+                    text!("SHIELD: {}s", seconds_left + 1; x = 8, y = 28, font = "small", color = warning_color);
+                }
+            } else {
+                // Normal display - just show timer
+                text!("SHIELD: {}s", seconds_left + 1; x = 8, y = 28, font = "small", color = COLOR_SHIELD);
+            }
+        }
+        
+        // Slow-mo timer - prominent in last 3 seconds
+        if self.slow_mo_timer > 0 {
+            let seconds_left = self.slow_mo_timer / 60;
+            let frames_left = self.slow_mo_timer % 60;
+            
+            if self.slow_mo_timer < 180 {
+                // Last 3 seconds - show countdown with ticking animation
+                let is_half_second = (frames_left / 30) % 2 == 0;
+                if is_half_second || self.slow_mo_timer < 60 {
+                    // Blink faster in last second
+                    let warning_color = if self.slow_mo_timer < 60 {
+                        COLOR_AURORA_RED  // Red in last second
+                    } else {
+                        0xffaa00ff  // Orange in 2-3 seconds
+                    };
+                    text!("SLOW: {}s", seconds_left + 1; x = 8, y = 38, font = "small", color = warning_color);
+                }
+            } else {
+                // Normal display - just show timer
+                text!("SLOW: {}s", seconds_left + 1; x = 8, y = 38, font = "small", color = COLOR_AURORA_GREEN);
+            }
+        }
+        
         if self.double_points_timer > 0 {
-            text!("2x {}", self.double_points_timer / 60; x = 8, y = 28, font = "small", color = COLOR_STAR);
+            text!("2x {}", self.double_points_timer / 60; x = 50, y = 38, font = "small", color = COLOR_STAR);
         }
         if self.magnet_timer > 0 {
-            text!("MAG {}", self.magnet_timer / 60; x = 50, y = 28, font = "small", color = COLOR_AURORA_GREEN);
-        }
-        if self.slow_mo_timer > 0 {
-            text!("SLOW {}", self.slow_mo_timer / 60; x = 90, y = 28, font = "small", color = COLOR_AURORA_GREEN);
+            text!("MAG {}", self.magnet_timer / 60; x = 90, y = 38, font = "small", color = COLOR_AURORA_GREEN);
         }
         
         // Altitude meter
